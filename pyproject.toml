@@ -1,0 +1,6 @@
+[tool.towncrier]
+package = "hypothesis_trio"
+filename = "docs/source/history.rst"
+directory = "newsfragments"
+underlines = ["-", "~", "^"]
+issue_format = "`#{issue} <https://github.com/python-trio/hypothesis-trio/issues/{issue}>`__"
