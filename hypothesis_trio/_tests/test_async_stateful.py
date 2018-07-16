@@ -1,6 +1,6 @@
 import trio
 
-from hypothesis_trio.stateful import TrioGenericStateMachine, TrioRuleBasedAsyncStateMachine
+from hypothesis_trio.stateful import TrioGenericStateMachine, TrioRuleBasedStateMachine
 from hypothesis.stateful import initialize, rule, invariant, run_state_machine_as_test
 from hypothesis.strategies import just, integers, lists, tuples
 
@@ -44,7 +44,7 @@ def test_triggers():
 
 
 def test_rule_based():
-    class LogEventsRuleBasedStateMachine(TrioRuleBasedAsyncStateMachine):
+    class LogEventsRuleBasedStateMachine(TrioRuleBasedStateMachine):
         events = []
 
         @initialize()
@@ -96,7 +96,7 @@ def test_trio_style():
         for i in range(10):
             await out_queue.put(i)
 
-    class TrioStyleStateMachine(TrioRuleBasedAsyncStateMachine):
+    class TrioStyleStateMachine(TrioRuleBasedStateMachine):
         @initialize()
         async def initialize(self):
             self.job_queue = trio.Queue(100)
