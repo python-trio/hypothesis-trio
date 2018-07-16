@@ -1,5 +1,5 @@
 hypothesis-trio
-===========
+===============
 
 .. image:: https://travis-ci.org/python-trio/hypothesis-trio.svg?branch=master
     :target: https://travis-ci.org/python-trio/hypothesis-trio
