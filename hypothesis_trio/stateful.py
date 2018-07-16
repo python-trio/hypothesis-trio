@@ -102,8 +102,8 @@ class TrioGenericStateMachine(GenericStateMachine):
         pass
 
 
-class TrioRuleBasedAsyncStateMachine(TrioGenericStateMachine,
-                                     RuleBasedStateMachine):
+class TrioRuleBasedStateMachine(TrioGenericStateMachine,
+                                RuleBasedStateMachine):
     """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
     """
 
@@ -144,5 +144,5 @@ __all__ = (
     'invariant',
     'RuleBasedStateMachine',
     'TrioGenericStateMachine',
-    'TrioRuleBasedAsyncStateMachine',
+    'TrioRuleBasedStateMachine',
 )
