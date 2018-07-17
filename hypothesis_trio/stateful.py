@@ -117,7 +117,8 @@ class TrioRuleBasedStateMachine(TrioGenericStateMachine,
         if rule.targets:
             name = self.new_name()
             self.names_to_values[name] = result
-            self.__printer.singleton_pprinters.setdefault(
+            # TODO: not really elegant to access __printer this way...
+            self._RuleBasedStateMachine__printer.singleton_pprinters.setdefault(
                 id(result), lambda obj, p, cycle: p.text(name)
             )
             for target in rule.targets:
