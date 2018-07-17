@@ -82,7 +82,7 @@ def test_rule_based():
 
 def test_trio_style():
     async def _consumer(
-            in_queue, out_queue, *, task_status=trio.TASK_STATUS_IGNORED
+        in_queue, out_queue, *, task_status=trio.TASK_STATUS_IGNORED
     ):
         with trio.open_cancel_scope() as cancel_scope:
             task_status.started(cancel_scope)

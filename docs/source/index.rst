@@ -4,9 +4,9 @@
    contain the root `toctree` directive.
 
 
-===================================
+===========================================
 hypothesis-trio: Hypothesis plugin for trio
-===================================
+===========================================
 
 .. toctree::
    :maxdepth: 2
