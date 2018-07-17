@@ -62,6 +62,10 @@ def test_rule_based():
             await trio.sleep(0)
             self.events.append('rule')
 
+        async def teardown(self):
+            await trio.sleep(0)
+            self.events.append('teardown')
+
     run_state_machine_as_test(LogEventsRuleBasedStateMachine)
 
     per_run_events = []
@@ -73,9 +77,8 @@ def test_rule_based():
             current_run_events = []
 
     for run_events in per_run_events:
-        expected_events = ['init', 'check_invariants']
-        expected_events += ['execute_step', 'check_invariants'
-                            ] * ((len(run_events) - 3) // 2)
+        expected_events = ['invariant', 'initialize', 'invariant']
+        expected_events += ['rule', 'invariant'] * ((len(run_events) - 3) // 2)
         expected_events.append('teardown')
         assert run_events == expected_events
 
@@ -91,10 +94,6 @@ def test_trio_style():
                 await trio.sleep(0)
                 result = x + y
                 await out_queue.put('%s + %s = %s' % (x, y, result))
-
-    async def _producer(out_queue):
-        for i in range(10):
-            await out_queue.put(i)
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
         @initialize()

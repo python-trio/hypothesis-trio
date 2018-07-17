@@ -17,7 +17,7 @@ from hypothesis.stateful import (
 )
 
 
-def monkey_path_hypothesis():
+def monkey_patch_hypothesis():
     def run(self, state_machine, print_steps=None):
         if print_steps is None:
             print_steps = current_verbosity() >= Verbosity.debug
@@ -53,7 +53,7 @@ def monkey_path_hypothesis():
     StateMachineRunner.run = run
 
 
-monkey_path_hypothesis()
+monkey_patch_hypothesis()
 
 
 class TrioGenericStateMachine(GenericStateMachine):
