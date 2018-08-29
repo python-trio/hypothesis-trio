@@ -5,6 +5,11 @@ Release history
 
 .. towncrier release notes start
 
+Hypothesis_Trio 0.2.2 (2018-08-29)
+----------------------------------
+
+Fix behovior of ``TrioGenericStateMachine.set_clock`` and ``TrioGenericStateMachine.push_instrument``
+
 Hypothesis_Trio 0.2.1 (2018-07-17)
 ----------------------------------
 
