@@ -60,11 +60,41 @@ class TrioGenericStateMachine(GenericStateMachine):
     """Trio compatible version of `hypothesis.stateful.GenericStateMachine`
     """
 
+    def __init__(self):
+        super().__init__()
+        self.__started = False
+        self.__clock = None
+        self.__instruments = []
+
     def get_root_nursery(self):
         return getattr(self, '_nursery', None)
 
+    def set_clock(self, clock):
+        """Define the clock to use in the trio loop.
+
+        .. note::
+            This function can only be used inside the `__init__` method (i.e.
+            before the trio loop has been started)
+        """
+        if self.__started:
+            raise RuntimeError('Can only set clock during `__init__`')
+        if self.__clock:
+            raise RuntimeError('clock already provided')
+        self.__clock = clock
+
+    def push_instrument(self, instrument):
+        """Add an instrument to use in the trio loop.
+
+        .. note::
+            This function can only be used inside the `__init__` method (i.e.
+            before the trio loop has been started)
+        """
+        if self.__started:
+            raise RuntimeError('Can only add instrument during `__init__`')
+        self.__instruments.append(instrument)
+
     def _custom_runner(self, data, print_steps, should_continue):
-        async def _run():
+        async def _run(**kwargs):
             async with trio.open_nursery() as self._nursery:
                 try:
                     if print_steps:
@@ -83,7 +113,14 @@ class TrioGenericStateMachine(GenericStateMachine):
                     await self.teardown()
                     self._nursery.cancel_scope.cancel()
 
-        trio_test(_run)()
+        self.__started = True
+        kwargs = {
+            'instrument_%s' % i: instrument
+            for i, instrument in enumerate(self.__instruments)
+        }
+        if self.__clock:
+            kwargs['clock'] = self.__clock
+        trio_test(_run)(**kwargs)
 
     async def execute_step(self, step):
         """Execute a step that has been previously drawn from self.steps()"""

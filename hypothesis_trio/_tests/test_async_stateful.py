@@ -1,4 +1,7 @@
+import pytest
 import trio
+from trio.abc import Instrument
+from trio.testing import MockClock
 
 from hypothesis_trio.stateful import TrioGenericStateMachine, TrioRuleBasedStateMachine
 from hypothesis.stateful import initialize, rule, invariant, run_state_machine_as_test
@@ -81,6 +84,69 @@ def test_rule_based():
         expected_events += ['rule', 'invariant'] * ((len(run_events) - 3) // 2)
         expected_events.append('teardown')
         assert run_events == expected_events
+
+
+def test_custom_clock_and_instruments():
+    class CustomMockClock(MockClock):
+        def __init__(self):
+            super().__init__()
+            self.in_use = False
+
+        def start_clock(self):
+            self.in_use = True
+
+    class CustomInstrument(Instrument):
+        def __init__(self):
+            super().__init__()
+            self.in_use = False
+
+        def before_run(self):
+            self.in_use = True
+
+    class CustomClockStateMachine(TrioRuleBasedStateMachine):
+        def __init__(self):
+            super().__init__()
+
+            self.expected_clock = CustomMockClock()
+            self.set_clock(self.expected_clock)
+
+            self.expected_instruments = [CustomInstrument() for _ in range(3)]
+            for instrument in self.expected_instruments:
+                self.push_instrument(instrument)
+
+        @rule()
+        async def rule(self):
+            assert self.expected_clock.in_use
+            for instrument in self.expected_instruments:
+                assert instrument.in_use
+
+    run_state_machine_as_test(CustomClockStateMachine)
+
+
+def test_cannot_customize_clock_and_instruments_after_start():
+    class BadTimeForCustomizingStateMachine(TrioRuleBasedStateMachine):
+        def _try_customizing(self):
+            with pytest.raises(RuntimeError):
+                self.set_clock(MockClock())
+            with pytest.raises(RuntimeError):
+                self.push_instrument(Instrument())
+
+        @initialize()
+        async def initialize(self):
+            self._try_customizing()
+
+        @invariant()
+        async def invariant(self):
+            self._try_customizing()
+
+        @rule()
+        async def rule(self):
+            self._try_customizing()
+
+        async def teardown(self):
+            self._try_customizing()
+
+    run_state_machine_as_test(BadTimeForCustomizingStateMachine)
 
 
 def test_trio_style():
