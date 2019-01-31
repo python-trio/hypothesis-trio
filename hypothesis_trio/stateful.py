@@ -1,7 +1,6 @@
 import trio
 from trio.testing import trio_test
 
-
 from hypothesis.stateful import (
     # Needed for run_state_machine_as_test copy-paste
     check_type,
@@ -21,9 +20,9 @@ from hypothesis.stateful import (
     MultipleResults,
 )
 
-
 # This is an ugly copy-paste since it's currently no possible to plug a special
 # runner into run_state_machine_as_test
+
 
 def run_state_machine_as_test(state_machine_factory, settings=None):
     """Run a state machine definition as a test, either silently doing nothing
@@ -35,9 +34,13 @@ def run_state_machine_as_test(state_machine_factory, settings=None):
     if settings is None:
         try:
             settings = state_machine_factory.TestCase.settings
-            check_type(Settings, settings, "state_machine_factory.TestCase.settings")
+            check_type(
+                Settings, settings, "state_machine_factory.TestCase.settings"
+            )
         except AttributeError:
-            settings = Settings(deadline=None, suppress_health_check=HealthCheck.all())
+            settings = Settings(
+                deadline=None, suppress_health_check=HealthCheck.all()
+            )
     check_type(Settings, settings, "settings")
 
     @settings
@@ -49,11 +52,15 @@ def run_state_machine_as_test(state_machine_factory, settings=None):
 
         n_steps = settings.stateful_step_count
         should_continue = cu.many(
-            data.conjecture_data, min_size=1, max_size=n_steps, average_size=n_steps
+            data.conjecture_data,
+            min_size=1,
+            max_size=n_steps,
+            average_size=n_steps
         )
 
         print_steps = (
-            current_build_context().is_final or current_verbosity() >= Verbosity.debug
+            current_build_context().is_final
+            or current_verbosity() >= Verbosity.debug
         )
 
         # Plug a custom machinery
@@ -90,7 +97,8 @@ def run_state_machine_as_test(state_machine_factory, settings=None):
         state_machine_factory, "_hypothesis_internal_use_seed", None
     )
     run_state_machine._hypothesis_internal_use_reproduce_failure = getattr(
-        state_machine_factory, "_hypothesis_internal_use_reproduce_failure", None
+        state_machine_factory, "_hypothesis_internal_use_reproduce_failure",
+        None
     )
 
     run_state_machine(state_machine_factory)
@@ -194,6 +202,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
 
 
 # Monkey patching
+
 
 def monkey_patch_hypothesis():
     from hypothesis import stateful
