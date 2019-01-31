@@ -112,44 +112,42 @@ def test_cannot_customize_clock_and_instruments_after_start():
 
 
 def test_trio_style():
-    async def _consumer(
-        in_queue, out_queue, *, task_status=trio.TASK_STATUS_IGNORED
+    async def consumer(
+        receive_job, send_result, *, task_status=trio.TASK_STATUS_IGNORED
     ):
         with trio.open_cancel_scope() as cancel_scope:
             task_status.started(cancel_scope)
-            while True:
-                x, y = await in_queue.get()
+            async for x, y in receive_job:
                 await trio.sleep(0)
                 result = x + y
-                await out_queue.put('%s + %s = %s' % (x, y, result))
+                await send_result.send('%s + %s = %s' % (x, y, result))
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
         @initialize()
         async def initialize(self):
-            self.job_queue = trio.Queue(100)
-            self.result_queue = trio.Queue(100)
-            self.consumer_cancel_scope = await self.get_root_nursery().start(
-                _consumer, self.job_queue, self.result_queue
-            )
+            self.send_job, receive_job = trio.open_memory_channel(100)
+            send_result, self.receive_result = trio.open_memory_channel(100)
+            self.consumer_args = consumer, receive_job, send_result
+            self.consumer_cancel_scope = await self.get_root_nursery(
+            ).start(*self.consumer_args)
 
         @rule(work=lists(tuples(integers(), integers())))
         async def generate_work(self, work):
             await trio.sleep(0)
             for x, y in work:
-                await self.job_queue.put((x, y))
+                await self.send_job.send((x, y))
 
         @rule()
         async def restart_consumer(self):
             self.consumer_cancel_scope.cancel()
-            self.consumer_cancel_scope = await self.get_root_nursery().start(
-                _consumer, self.job_queue, self.result_queue
-            )
+            self.consumer_cancel_scope = await self.get_root_nursery(
+            ).start(*self.consumer_args)
 
         @invariant()
         async def check_results(self):
             while True:
                 try:
-                    job = self.result_queue.get_nowait()
+                    job = self.receive_result.receive_nowait()
                     assert isinstance(job, str)
                 except (trio.WouldBlock, AttributeError):
                     break
