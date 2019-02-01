@@ -3,47 +3,9 @@ import trio
 from trio.abc import Instrument
 from trio.testing import MockClock
 
-from hypothesis_trio.stateful import TrioGenericStateMachine, TrioRuleBasedStateMachine
+from hypothesis_trio.stateful import TrioRuleBasedStateMachine
 from hypothesis.stateful import initialize, rule, invariant, run_state_machine_as_test
 from hypothesis.strategies import just, integers, lists, tuples
-
-
-def test_triggers():
-    class LogEventsStateMachine(TrioGenericStateMachine):
-        events = []
-
-        async def teardown(self):
-            await trio.sleep(0)
-            self.events.append('teardown')
-
-        def steps(self):
-            return just(42)
-
-        async def execute_step(self, step):
-            await trio.sleep(0)
-            assert step is 42
-            self.events.append('execute_step')
-
-        async def check_invariants(self):
-            await trio.sleep(0)
-            self.events.append('check_invariants')
-
-    run_state_machine_as_test(LogEventsStateMachine)
-
-    per_run_events = []
-    current_run_events = []
-    for event in LogEventsStateMachine.events:
-        current_run_events.append(event)
-        if event == 'teardown':
-            per_run_events.append(current_run_events)
-            current_run_events = []
-
-    for run_events in per_run_events:
-        expected_events = ['check_invariants']
-        expected_events += ['execute_step', 'check_invariants'
-                            ] * ((len(run_events) - 2) // 2)
-        expected_events.append('teardown')
-        assert run_events == expected_events
 
 
 def test_rule_based():

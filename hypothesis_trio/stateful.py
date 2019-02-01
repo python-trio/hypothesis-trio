@@ -96,8 +96,8 @@ def run_state_machine_as_test(state_machine_factory, settings=None):
     run_state_machine(state_machine_factory)
 
 
-class TrioGenericStateMachine(GenericStateMachine):
-    """Trio compatible version of `hypothesis.stateful.GenericStateMachine`
+class TrioRuleBasedStateMachine(RuleBasedStateMachine):
+    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
     """
 
     def __init__(self):
@@ -162,10 +162,6 @@ class TrioGenericStateMachine(GenericStateMachine):
             kwargs['clock'] = self.__clock
         trio_test(_run)(**kwargs)
 
-    async def execute_step(self, step):
-        """Execute a step that has been previously drawn from self.steps()"""
-        raise NotImplementedError(u'%r.execute_step()' % (self,))
-
     async def teardown(self):
         """Called after a run has finished executing to clean up any necessary
         state.
@@ -173,16 +169,6 @@ class TrioGenericStateMachine(GenericStateMachine):
         Does nothing by default.
         """
         pass
-
-    async def check_invariants(self):
-        """Called after initializing and after executing each step."""
-        pass
-
-
-class TrioRuleBasedStateMachine(TrioGenericStateMachine,
-                                RuleBasedStateMachine):
-    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
-    """
 
     async def execute_step(self, step):
         rule, data = step
