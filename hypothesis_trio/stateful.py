@@ -20,6 +20,7 @@ from hypothesis.stateful import (
     RuleBasedStateMachine,
     VarReference,
     MultipleResults,
+    report,
 )
 
 # This is an ugly copy-paste since it's currently no possible to plug a special
@@ -114,25 +115,33 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             raise RuntimeError('Can only add instrument during `__init__`')
         self.__instruments.append(instrument)
 
+    # Runner logic
+
     def _custom_runner(self, data, print_steps, should_continue):
+        async def runner(machine):
+            try:
+                if print_steps:
+                    machine.print_start()
+                await machine.check_invariants()
+
+                while should_continue.more():
+                    value = data.conjecture_data.draw(machine.steps())
+                    if print_steps:
+                        machine.print_step(value)
+                    await machine.execute_step(value)
+                    await machine.check_invariants()
+            finally:
+                if print_steps:
+                    self.print_end()
+                await self.teardown()
+
+        self.trio_run(runner, self)
+
+    def trio_run(self, corofn, *args):
         async def _run(**kwargs):
             async with trio.open_nursery() as self._nursery:
-                try:
-                    if print_steps:
-                        self.print_start()
-                    await self.check_invariants()
-
-                    while should_continue.more():
-                        value = data.conjecture_data.draw(self.steps())
-                        if print_steps:
-                            self.print_step(value)
-                        await self.execute_step(value)
-                        await self.check_invariants()
-                finally:
-                    if print_steps:
-                        self.print_end()
-                    await self.teardown()
-                    self._nursery.cancel_scope.cancel()
+                await corofn(*args)
+                self._nursery.cancel_scope.cancel()
 
         self.__started = True
         kwargs = {
@@ -142,6 +151,8 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
         if self.__clock:
             kwargs['clock'] = self.__clock
         trio_test(_run)(**kwargs)
+
+    # Async methods
 
     async def teardown(self):
         """Called after a run has finished executing to clean up any necessary
@@ -172,6 +183,30 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             if invar.precondition and not invar.precondition(self):
                 continue
             await invar.function(self)
+
+    # Reporting
+
+    def print_start(self):
+        report("state = %s()" % (self.__class__.__name__,))
+        report("async def steps():")
+
+    def print_end(self):
+        report("    await state.teardown()")
+        report("state.trio_run(steps)")
+
+    def print_step(self, step):
+        rule, data = step
+        data_repr = {}
+        for k, v in data.items():
+            data_repr[k] = self._RuleBasedStateMachine__pretty(v)
+        self.step_count = getattr(self, "step_count", 0) + 1
+        report(
+            "    %sawait state.%s(%s)" % (
+                "%s = " % (self.upcoming_name(),) if rule.targets else "",
+                rule.function.__name__,
+                ", ".join("%s=%s" % kv for kv in data_repr.items()),
+            )
+        )
 
 
 # Monkey patching
