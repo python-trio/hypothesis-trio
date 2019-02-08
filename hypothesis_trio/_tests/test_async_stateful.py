@@ -3,9 +3,11 @@ import trio
 from trio.abc import Instrument
 from trio.testing import MockClock
 
+import hypothesis
+from hypothesis import Verbosity
 from hypothesis_trio.stateful import TrioRuleBasedStateMachine
-from hypothesis.stateful import initialize, rule, invariant, run_state_machine_as_test
-from hypothesis.strategies import just, integers, lists, tuples
+from hypothesis.stateful import Bundle, initialize, rule, invariant, run_state_machine_as_test
+from hypothesis.strategies import integers, lists, tuples
 
 
 def test_rule_based():
@@ -153,3 +155,51 @@ def test_trio_style():
                     break
 
     run_state_machine_as_test(TrioStyleStateMachine)
+
+
+def test_trio_style_failing(capsys):
+
+    # Failing state machine
+
+    class TrioStyleStateMachine(TrioRuleBasedStateMachine):
+        Values = Bundle('value')
+
+        @initialize(target=Values)
+        async def initialize(self):
+            return 1
+
+        @rule(value=Values)
+        async def do_work(self, value):
+            assert value == 2
+
+    # Check failure
+
+    settings = hypothesis.settings(max_examples=10, verbosity=Verbosity.debug)
+    with pytest.raises(AssertionError) as record:
+        run_state_machine_as_test(TrioStyleStateMachine, settings=settings)
+    captured = capsys.readouterr()
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps
+
+    with pytest.raises(AssertionError) as record:
+        state = TrioStyleStateMachine()
+
+        async def steps():
+            v1 = await state.initialize()
+            await state.do_work(value=v1)
+            await state.teardown()
+
+        state.trio_run(steps)
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps printout
+
+    assert """\
+state = TrioStyleStateMachine()
+async def steps():
+    v1 = await state.initialize()
+    await state.do_work(value=v1)
+    await state.teardown()
+state.trio_run(steps)
+""" in captured.out
