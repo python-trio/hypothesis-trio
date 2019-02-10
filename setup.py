@@ -14,9 +14,7 @@ setup(
     author_email="emmanuel.leblond@gmail.com",
     license="MIT -or- Apache License 2.0",
     packages=find_packages(),
-    install_requires=[
-        "trio",
-    ],
+    install_requires=["trio", "hypothesis~=4.0"],
     keywords=[
         'async',
         'hypothesis',

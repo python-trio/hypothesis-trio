@@ -3,47 +3,11 @@ import trio
 from trio.abc import Instrument
 from trio.testing import MockClock
 
-from hypothesis_trio.stateful import TrioGenericStateMachine, TrioRuleBasedStateMachine
-from hypothesis.stateful import initialize, rule, invariant, run_state_machine_as_test
-from hypothesis.strategies import just, integers, lists, tuples
-
-
-def test_triggers():
-    class LogEventsStateMachine(TrioGenericStateMachine):
-        events = []
-
-        async def teardown(self):
-            await trio.sleep(0)
-            self.events.append('teardown')
-
-        def steps(self):
-            return just(42)
-
-        async def execute_step(self, step):
-            await trio.sleep(0)
-            assert step is 42
-            self.events.append('execute_step')
-
-        async def check_invariants(self):
-            await trio.sleep(0)
-            self.events.append('check_invariants')
-
-    run_state_machine_as_test(LogEventsStateMachine)
-
-    per_run_events = []
-    current_run_events = []
-    for event in LogEventsStateMachine.events:
-        current_run_events.append(event)
-        if event == 'teardown':
-            per_run_events.append(current_run_events)
-            current_run_events = []
-
-    for run_events in per_run_events:
-        expected_events = ['check_invariants']
-        expected_events += ['execute_step', 'check_invariants'
-                            ] * ((len(run_events) - 2) // 2)
-        expected_events.append('teardown')
-        assert run_events == expected_events
+import hypothesis
+from hypothesis import Verbosity
+from hypothesis_trio.stateful import TrioRuleBasedStateMachine
+from hypothesis.stateful import Bundle, initialize, rule, invariant, run_state_machine_as_test
+from hypothesis.strategies import integers, lists, tuples
 
 
 def test_rule_based():
@@ -150,46 +114,92 @@ def test_cannot_customize_clock_and_instruments_after_start():
 
 
 def test_trio_style():
-    async def _consumer(
-        in_queue, out_queue, *, task_status=trio.TASK_STATUS_IGNORED
+    async def consumer(
+        receive_job, send_result, *, task_status=trio.TASK_STATUS_IGNORED
     ):
         with trio.open_cancel_scope() as cancel_scope:
             task_status.started(cancel_scope)
-            while True:
-                x, y = await in_queue.get()
+            async for x, y in receive_job:
                 await trio.sleep(0)
                 result = x + y
-                await out_queue.put('%s + %s = %s' % (x, y, result))
+                await send_result.send('%s + %s = %s' % (x, y, result))
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
         @initialize()
         async def initialize(self):
-            self.job_queue = trio.Queue(100)
-            self.result_queue = trio.Queue(100)
-            self.consumer_cancel_scope = await self.get_root_nursery().start(
-                _consumer, self.job_queue, self.result_queue
-            )
+            self.send_job, receive_job = trio.open_memory_channel(100)
+            send_result, self.receive_result = trio.open_memory_channel(100)
+            self.consumer_args = consumer, receive_job, send_result
+            self.consumer_cancel_scope = await self.get_root_nursery(
+            ).start(*self.consumer_args)
 
         @rule(work=lists(tuples(integers(), integers())))
         async def generate_work(self, work):
             await trio.sleep(0)
             for x, y in work:
-                await self.job_queue.put((x, y))
+                await self.send_job.send((x, y))
 
         @rule()
         async def restart_consumer(self):
             self.consumer_cancel_scope.cancel()
-            self.consumer_cancel_scope = await self.get_root_nursery().start(
-                _consumer, self.job_queue, self.result_queue
-            )
+            self.consumer_cancel_scope = await self.get_root_nursery(
+            ).start(*self.consumer_args)
 
         @invariant()
         async def check_results(self):
             while True:
                 try:
-                    job = self.result_queue.get_nowait()
+                    job = self.receive_result.receive_nowait()
                     assert isinstance(job, str)
                 except (trio.WouldBlock, AttributeError):
                     break
 
     run_state_machine_as_test(TrioStyleStateMachine)
+
+
+def test_trio_style_failing(capsys):
+
+    # Failing state machine
+
+    class TrioStyleStateMachine(TrioRuleBasedStateMachine):
+        Values = Bundle('value')
+
+        @initialize(target=Values)
+        async def initialize(self):
+            return 1
+
+        @rule(value=Values)
+        async def do_work(self, value):
+            assert value == 2
+
+    # Check failure
+
+    settings = hypothesis.settings(max_examples=10, verbosity=Verbosity.debug)
+    with pytest.raises(AssertionError) as record:
+        run_state_machine_as_test(TrioStyleStateMachine, settings=settings)
+    captured = capsys.readouterr()
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps
+
+    with pytest.raises(AssertionError) as record:
+        state = TrioStyleStateMachine()
+
+        async def steps():
+            v1 = await state.initialize()
+            await state.do_work(value=v1)
+            await state.teardown()
+
+        state.trio_run(steps)
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps printout
+
+    assert """\
+state = TrioStyleStateMachine()
+async def steps():
+    v1 = await state.initialize()
+    await state.do_work(value=v1)
+    await state.teardown()
+state.trio_run(steps)
+""" in captured.out

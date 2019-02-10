@@ -1,63 +1,85 @@
 import trio
 from trio.testing import trio_test
-import hypothesis.internal.conjecture.utils as cu
-from hypothesis._settings import Verbosity
-from hypothesis.reporting import current_verbosity
+
+import hypothesis
+
 from hypothesis.stateful import (
-    VarReference,
+    # Needed for run_state_machine_as_test copy-paste
+    check_type,
+    cu,
+    current_verbosity,
+    Verbosity,
+    Settings,
+    HealthCheck,
     GenericStateMachine,
-    StateMachineRunner,
-    run_state_machine_as_test,
-    Bundle,
-    rule,
-    initialize,
-    precondition,
-    invariant,
+    given,
+    st,
+    current_build_context,
+    function_digest,
+    # Needed for TrioRuleBasedStateMachine
     RuleBasedStateMachine,
+    VarReference,
+    MultipleResults,
+    report,
 )
 
+# This is an ugly copy-paste since it's currently no possible to plug a special
+# runner into run_state_machine_as_test
 
-def monkey_patch_hypothesis():
-    def run(self, state_machine, print_steps=None):
-        if print_steps is None:
-            print_steps = current_verbosity() >= Verbosity.debug
-        self.data.hypothesis_runner = state_machine
 
+def run_custom_state_machine_as_test(state_machine_factory, settings=None):
+    if settings is None:
+        try:
+            settings = state_machine_factory.TestCase.settings
+            check_type(
+                Settings, settings, "state_machine_factory.TestCase.settings"
+            )
+        except AttributeError:
+            settings = Settings(
+                deadline=None, suppress_health_check=HealthCheck.all()
+            )
+    check_type(Settings, settings, "settings")
+
+    @settings
+    @given(st.data())
+    def run_state_machine(factory, data):
+        machine = factory()
+        check_type(GenericStateMachine, machine, "state_machine_factory()")
+        data.conjecture_data.hypothesis_runner = machine
+
+        n_steps = settings.stateful_step_count
         should_continue = cu.many(
-            self.data,
+            data.conjecture_data,
             min_size=1,
-            max_size=self.n_steps,
-            average_size=self.n_steps,
+            max_size=n_steps,
+            average_size=n_steps
         )
 
-        def _default_runner(data, print_steps, should_continue):
-            try:
-                if print_steps:
-                    state_machine.print_start()
-                state_machine.check_invariants()
+        print_steps = (
+            current_build_context().is_final
+            or current_verbosity() >= Verbosity.debug
+        )
 
-                while should_continue.more():
-                    value = data.draw(state_machine.steps())
-                    if print_steps:
-                        state_machine.print_step(value)
-                    state_machine.execute_step(value)
-                    state_machine.check_invariants()
-            finally:
-                if print_steps:
-                    state_machine.print_end()
-                state_machine.teardown()
+        return machine._custom_runner(data, print_steps, should_continue)
 
-        runner = getattr(state_machine, '_custom_runner', _default_runner)
-        runner(self.data, print_steps, should_continue)
+    # Use a machine digest to identify stateful tests in the example database
+    run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = function_digest(
+        state_machine_factory
+    )
+    # Copy some attributes so @seed and @reproduce_failure "just work"
+    run_state_machine._hypothesis_internal_use_seed = getattr(
+        state_machine_factory, "_hypothesis_internal_use_seed", None
+    )
+    run_state_machine._hypothesis_internal_use_reproduce_failure = getattr(
+        state_machine_factory, "_hypothesis_internal_use_reproduce_failure",
+        None
+    )
 
-    StateMachineRunner.run = run
-
-
-monkey_patch_hypothesis()
+    run_state_machine(state_machine_factory)
 
 
-class TrioGenericStateMachine(GenericStateMachine):
-    """Trio compatible version of `hypothesis.stateful.GenericStateMachine`
+class TrioRuleBasedStateMachine(RuleBasedStateMachine):
+    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
     """
 
     def __init__(self):
@@ -93,25 +115,33 @@ class TrioGenericStateMachine(GenericStateMachine):
             raise RuntimeError('Can only add instrument during `__init__`')
         self.__instruments.append(instrument)
 
+    # Runner logic
+
     def _custom_runner(self, data, print_steps, should_continue):
+        async def runner(machine):
+            try:
+                if print_steps:
+                    machine.print_start()
+                await machine.check_invariants()
+
+                while should_continue.more():
+                    value = data.conjecture_data.draw(machine.steps())
+                    if print_steps:
+                        machine.print_step(value)
+                    await machine.execute_step(value)
+                    await machine.check_invariants()
+            finally:
+                if print_steps:
+                    self.print_end()
+                await self.teardown()
+
+        self.trio_run(runner, self)
+
+    def trio_run(self, corofn, *args):
         async def _run(**kwargs):
             async with trio.open_nursery() as self._nursery:
-                try:
-                    if print_steps:
-                        self.print_start()
-                    await self.check_invariants()
-
-                    while should_continue.more():
-                        value = data.draw(self.steps())
-                        if print_steps:
-                            self.print_step(value)
-                        await self.execute_step(value)
-                        await self.check_invariants()
-                finally:
-                    if print_steps:
-                        self.print_end()
-                    await self.teardown()
-                    self._nursery.cancel_scope.cancel()
+                await corofn(*args)
+                self._nursery.cancel_scope.cancel()
 
         self.__started = True
         kwargs = {
@@ -122,9 +152,7 @@ class TrioGenericStateMachine(GenericStateMachine):
             kwargs['clock'] = self.__clock
         trio_test(_run)(**kwargs)
 
-    async def execute_step(self, step):
-        """Execute a step that has been previously drawn from self.steps()"""
-        raise NotImplementedError(u'%r.execute_step()' % (self,))
+    # Async methods
 
     async def teardown(self):
         """Called after a run has finished executing to clean up any necessary
@@ -134,16 +162,6 @@ class TrioGenericStateMachine(GenericStateMachine):
         """
         pass
 
-    async def check_invariants(self):
-        """Called after initializing and after executing each step."""
-        pass
-
-
-class TrioRuleBasedStateMachine(TrioGenericStateMachine,
-                                RuleBasedStateMachine):
-    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
-    """
-
     async def execute_step(self, step):
         rule, data = step
         data = dict(data)
@@ -152,14 +170,11 @@ class TrioRuleBasedStateMachine(TrioGenericStateMachine,
                 data[k] = self.names_to_values[v.name]
         result = await rule.function(self, **data)
         if rule.targets:
-            name = self.new_name()
-            self.names_to_values[name] = result
-            # TODO: not really elegant to access __printer this way...
-            self._RuleBasedStateMachine__printer.singleton_pprinters.setdefault(
-                id(result), lambda obj, p, cycle: p.text(name)
-            )
-            for target in rule.targets:
-                self.bundle(target).append(VarReference(name))
+            if isinstance(result, MultipleResults):
+                for single_result in result.values:
+                    self._add_result_to_targets(rule.targets, single_result)
+            else:
+                self._add_result_to_targets(rule.targets, result)
         if self._initialize_rules_to_run:
             self._initialize_rules_to_run.remove(rule)
 
@@ -169,18 +184,56 @@ class TrioRuleBasedStateMachine(TrioGenericStateMachine,
                 continue
             await invar.function(self)
 
+    # Reporting
 
-__all__ = (
-    'VarReference',
-    'GenericStateMachine',
-    'StateMachineRunner',
-    'run_state_machine_as_test',
-    'Bundle',
-    'rule',
-    'initialize',
-    'precondition',
-    'invariant',
-    'RuleBasedStateMachine',
-    'TrioGenericStateMachine',
-    'TrioRuleBasedStateMachine',
-)
+    def print_start(self):
+        report("state = %s()" % (self.__class__.__name__,))
+        report("async def steps():")
+
+    def print_end(self):
+        report("    await state.teardown()")
+        report("state.trio_run(steps)")
+
+    def print_step(self, step):
+        rule, data = step
+        data_repr = {}
+        for k, v in data.items():
+            data_repr[k] = self._RuleBasedStateMachine__pretty(v)
+        self.step_count = getattr(self, "step_count", 0) + 1
+        report(
+            "    %sawait state.%s(%s)" % (
+                "%s = " % (self.upcoming_name(),) if rule.targets else "",
+                rule.function.__name__,
+                ", ".join("%s=%s" % kv for kv in data_repr.items()),
+            )
+        )
+
+
+# Monkey patching
+
+
+def monkey_patch_hypothesis():
+    if hasattr(hypothesis.stateful, "original_run_state_machine_as_test"):
+        return
+    original = hypothesis.stateful.run_state_machine_as_test
+
+    def run_state_machine_as_test(state_machine_factory, settings=None):
+        """Run a state machine definition as a test, either silently doing nothing
+        or printing a minimal breaking program and raising an exception.
+        state_machine_factory is anything which returns an instance of
+        GenericStateMachine when called with no arguments - it can be a class or a
+        function. settings will be used to control the execution of the test.
+        """
+        if hasattr(state_machine_factory, '_custom_runner'):
+            return run_custom_state_machine_as_test(
+                state_machine_factory, settings=settings
+            )
+        return original(state_machine_factory, settings=settings)
+
+    hypothesis.stateful.original_run_state_machine_as_test = original
+    hypothesis.stateful.run_state_machine_as_test = run_state_machine_as_test
+
+
+# Monkey patch and expose all objects from original stateful module
+monkey_patch_hypothesis()
+from hypothesis.stateful import *
