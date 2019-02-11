@@ -117,7 +117,7 @@ def test_trio_style():
     async def consumer(
         receive_job, send_result, *, task_status=trio.TASK_STATUS_IGNORED
     ):
-        with trio.open_cancel_scope() as cancel_scope:
+        with trio.CancelScope() as cancel_scope:
             task_status.started(cancel_scope)
             async for x, y in receive_job:
                 await trio.sleep(0)
