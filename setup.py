@@ -12,7 +12,7 @@ setup(
     long_description=open("README.rst").read(),
     author="Emmanuel Leblond",
     author_email="emmanuel.leblond@gmail.com",
-    license="MIT -or- Apache License 2.0",
+    license="MPL 2.0",
     packages=find_packages(),
     install_requires=["trio>=0.11", "hypothesis~=4.0"],
     keywords=[
@@ -23,8 +23,7 @@ setup(
     ],
     python_requires=">=3.5",
     classifiers=[
-        "License :: OSI Approved :: MIT License",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",

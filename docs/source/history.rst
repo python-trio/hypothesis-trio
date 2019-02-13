@@ -5,6 +5,15 @@ Release history
 
 .. towncrier release notes start
 
+Hypothesis_Trio 0.3.1 (2019-02-13)
+----------------------------------
+
+This patch fixes hypothesis-trio's license compliance, by changing the
+license to the Mozilla Public License 2.0.  This is required because
+hypothesis-trio is substantively a modified version of the ``stateful``
+module from Hypothesis, under file-based copyleft, and has the agreement
+of all contributors to hypothesis-trio.
+
 Hypothesis_Trio 0.3.0 (2019-02-11)
 ----------------------------------
 
