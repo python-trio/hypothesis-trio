@@ -4,6 +4,10 @@
 
 import trio
 from trio.testing import trio_test
+try:
+    import trio_asyncio
+except ImportError:
+    trio_asyncio = None
 
 import hypothesis
 
@@ -141,12 +145,15 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
 
         self.trio_run(runner, self)
 
-    def trio_run(self, corofn, *args):
-        async def _run(**kwargs):
+    def _trio_main_afn_factory(self, corofn, *args):
+        async def _trio_main_afn(**kwargs):
             async with trio.open_nursery() as self._nursery:
                 await corofn(*args)
                 self._nursery.cancel_scope.cancel()
 
+        return _trio_main_afn
+
+    def trio_run(self, corofn, *args):
         self.__started = True
         kwargs = {
             'instrument_%s' % i: instrument
@@ -154,7 +161,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
         }
         if self.__clock:
             kwargs['clock'] = self.__clock
-        trio_test(_run)(**kwargs)
+        trio_test(self._trio_main_afn_factory(corofn, *args))(**kwargs)
 
     # Async methods
 
@@ -211,6 +218,22 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
                 ", ".join("%s=%s" % kv for kv in data_repr.items()),
             )
         )
+
+
+if trio_asyncio:
+
+    class TrioAsyncioRuleBasedStateMachine(TrioRuleBasedStateMachine):
+        def get_asyncio_loop(self):
+            return getattr(self, '_loop', None)
+
+        def _trio_main_afn_factory(self, corofn, *args):
+            async def _trio_main_afn(**kwargs):
+                async with trio_asyncio.open_loop() as self._loop:
+                    async with trio.open_nursery() as self._nursery:
+                        await corofn(*args)
+                        self._nursery.cancel_scope.cancel()
+
+            return _trio_main_afn
 
 
 # Monkey patching

@@ -1,4 +1,5 @@
 pytest
 pytest-cov
 pytest-trio
+trio-asyncio
 hypothesis>=3.64
