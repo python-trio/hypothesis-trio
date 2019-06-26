@@ -5,6 +5,11 @@ Release history
 
 .. towncrier release notes start
 
+Hypothesis_Trio 0.4.0 (2019-06-26)
+----------------------------------
+
+Add ``TrioAsyncioGenericStateMachine`` to support trio-asyncio.
+
 Hypothesis_Trio 0.3.1 (2019-02-13)
 ----------------------------------
 
