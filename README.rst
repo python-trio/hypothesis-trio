@@ -50,7 +50,7 @@ Replace ``hypothesis.stateful.RuleBasedStateMachine`` by ``hypothesis_trio.state
             async def teardown(self):
                 await trio.sleep(0)
 
-    run_state_machine_as_test(NumberModifier, settings=hypothesis_settings)
+        run_state_machine_as_test(NumberModifier, settings=hypothesis_settings)
 
 
 Support for Trio-Asyncio
