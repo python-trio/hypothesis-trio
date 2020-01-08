@@ -14,16 +14,19 @@ import hypothesis
 from hypothesis.stateful import (
     # Needed for run_state_machine_as_test copy-paste
     check_type,
-    cu,
     current_verbosity,
     Verbosity,
     Settings,
     HealthCheck,
-    GenericStateMachine,
+    _GenericStateMachine,
     given,
     st,
     current_build_context,
     function_digest,
+    InvalidArgument,
+    multiple,
+    STATE_MACHINE_RUN_LABEL,
+    SHOULD_CONTINUE_LABEL,
     # Needed for TrioRuleBasedStateMachine
     RuleBasedStateMachine,
     VarReference,
@@ -33,6 +36,7 @@ from hypothesis.stateful import (
 
 # This is an ugly copy-paste since it's currently no possible to plug a special
 # runner into run_state_machine_as_test
+# https://github.com/HypothesisWorks/hypothesis/blob/47f82a1cc02aec5ee4d95a21df5a6eecc4aa1047/hypothesis-python/src/hypothesis/stateful.py#L80-L162
 
 
 def run_custom_state_machine_as_test(state_machine_factory, settings=None):
@@ -52,23 +56,19 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
     @given(st.data())
     def run_state_machine(factory, data):
         machine = factory()
-        check_type(GenericStateMachine, machine, "state_machine_factory()")
+        if not isinstance(machine, _GenericStateMachine):
+            raise InvalidArgument(
+                "Expected RuleBasedStateMachine but state_machine_factory() "
+                "returned %r (type=%s)" % (machine, type(machine).__name__)
+            )
         data.conjecture_data.hypothesis_runner = machine
-
-        n_steps = settings.stateful_step_count
-        should_continue = cu.many(
-            data.conjecture_data,
-            min_size=1,
-            max_size=n_steps,
-            average_size=n_steps
-        )
 
         print_steps = (
             current_build_context().is_final
             or current_verbosity() >= Verbosity.debug
         )
 
-        return machine._custom_runner(data, print_steps, should_continue)
+        return machine._custom_runner(data, print_steps, settings)
 
     # Use a machine digest to identify stateful tests in the example database
     run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = function_digest(
@@ -82,6 +82,7 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
         state_machine_factory, "_hypothesis_internal_use_reproduce_failure",
         None
     )
+    run_state_machine._hypothesis_internal_print_given_args = False
 
     run_state_machine(state_machine_factory)
 
@@ -125,23 +126,68 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
 
     # Runner logic
 
-    def _custom_runner(self, data, print_steps, should_continue):
+    def _custom_runner(self, data, print_steps, settings):
+
+        # Second part of the ugly copy-paste - no way around it for the moment
+        # https://github.com/HypothesisWorks/hypothesis/blob/master/hypothesis-python/src/hypothesis/stateful.py#L94-L147
+
         async def runner(machine):
             try:
                 if print_steps:
                     machine.print_start()
                 await machine.check_invariants()
+                max_steps = settings.stateful_step_count
+                steps_run = 0
 
-                while should_continue.more():
+                cd = data.conjecture_data
+
+                while True:
+                    # We basically always want to run the maximum number of steps,
+                    # but need to leave a small probability of terminating early
+                    # in order to allow for reducing the number of steps once we
+                    # find a failing test case, so we stop with probability of
+                    # 2 ** -16 during normal operation but force a stop when we've
+                    # generated enough steps.
+                    cd.start_example(STATE_MACHINE_RUN_LABEL)
+                    if steps_run == 0:
+                        cd.draw_bits(16, forced=1)
+                    elif steps_run >= max_steps:
+                        cd.draw_bits(16, forced=0)
+                        break
+                    else:
+                        # All we really care about is whether this value is zero
+                        # or non-zero, so if it's > 1 we discard it and insert a
+                        # replacement value after
+                        cd.start_example(SHOULD_CONTINUE_LABEL)
+                        should_continue_value = cd.draw_bits(16)
+                        if should_continue_value > 1:
+                            cd.stop_example(discard=True)
+                            cd.draw_bits(
+                                16, forced=int(bool(should_continue_value))
+                            )
+                        else:
+                            cd.stop_example()
+                            if should_continue_value == 0:
+                                break
+                    steps_run += 1
+
                     value = data.conjecture_data.draw(machine.steps())
-                    if print_steps:
-                        machine.print_step(value)
-                    await machine.execute_step(value)
+                    # Assign 'result' here in case 'execute_step' fails below
+                    result = multiple()
+                    try:
+                        result = await machine.execute_step(value)
+                    finally:
+                        if print_steps:
+                            # 'result' is only used if the step has target bundles.
+                            # If it does, and the result is a 'MultipleResult',
+                            # then 'print_step' prints a multi-variable assignment.
+                            machine.print_step(value, result)
                     await machine.check_invariants()
+                    data.conjecture_data.stop_example()
             finally:
                 if print_steps:
-                    self.print_end()
-                await self.teardown()
+                    machine.print_end()
+                await machine.teardown()
 
         self.trio_run(runner, self)
 
@@ -188,6 +234,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
                 self._add_result_to_targets(rule.targets, result)
         if self._initialize_rules_to_run:
             self._initialize_rules_to_run.remove(rule)
+        return result
 
     async def check_invariants(self):
         for invar in self.invariants():
@@ -205,15 +252,28 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
         report("    await state.teardown()")
         report("state.trio_run(steps)")
 
-    def print_step(self, step):
+    def print_step(self, step, result):
+        # Copy-pasted from RuleBasedStateMachine.print_step in order to add
+        # the await statement.
+        # https://github.com/HypothesisWorks/hypothesis/blob/47f82a1cc02aec5ee4d95a21df5a6eecc4aa1047/hypothesis-python/src/hypothesis/stateful.py#L806-L830
         rule, data = step
         data_repr = {}
         for k, v in data.items():
             data_repr[k] = self._RuleBasedStateMachine__pretty(v)
         self.step_count = getattr(self, "step_count", 0) + 1
+        # If the step has target bundles, and the result is a MultipleResults
+        # then we want to assign to multiple variables.
+        if isinstance(result, MultipleResults):
+            n_output_vars = len(result.values)
+        else:
+            n_output_vars = 1
+        output_assignment = (
+            "%s = " % (", ".join(self.last_names(n_output_vars)),)
+            if rule.targets and n_output_vars >= 1 else ""
+        )
         report(
             "    %sawait state.%s(%s)" % (
-                "%s = " % (self.upcoming_name(),) if rule.targets else "",
+                output_assignment,
                 rule.function.__name__,
                 ", ".join("%s=%s" % kv for kv in data_repr.items()),
             )
@@ -248,7 +308,7 @@ def monkey_patch_hypothesis():
         """Run a state machine definition as a test, either silently doing nothing
         or printing a minimal breaking program and raising an exception.
         state_machine_factory is anything which returns an instance of
-        GenericStateMachine when called with no arguments - it can be a class or a
+        _GenericStateMachine when called with no arguments - it can be a class or a
         function. settings will be used to control the execution of the test.
         """
         if hasattr(state_machine_factory, '_custom_runner'):
