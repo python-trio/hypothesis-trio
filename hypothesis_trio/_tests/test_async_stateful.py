@@ -4,9 +4,10 @@ from trio.abc import Instrument
 from trio.testing import MockClock
 
 import hypothesis
-from hypothesis import Verbosity
 from hypothesis_trio.stateful import TrioRuleBasedStateMachine
-from hypothesis.stateful import Bundle, initialize, rule, invariant, run_state_machine_as_test
+from hypothesis.stateful import (
+    Bundle, initialize, rule, invariant, run_state_machine_as_test, multiple
+)
 from hypothesis.strategies import integers, lists, tuples
 
 
@@ -157,7 +158,7 @@ def test_trio_style():
     run_state_machine_as_test(TrioStyleStateMachine)
 
 
-def test_trio_style_failing(capsys):
+def test_trio_style_failing_state_machine_with_single_result(capsys):
 
     # Failing state machine
 
@@ -174,9 +175,8 @@ def test_trio_style_failing(capsys):
 
     # Check failure
 
-    settings = hypothesis.settings(max_examples=10, verbosity=Verbosity.debug)
     with pytest.raises(AssertionError) as record:
-        run_state_machine_as_test(TrioStyleStateMachine, settings=settings)
+        run_state_machine_as_test(TrioStyleStateMachine)
     captured = capsys.readouterr()
     assert 'assert 1 == 2' in str(record.value)
 
@@ -194,7 +194,6 @@ def test_trio_style_failing(capsys):
     assert 'assert 1 == 2' in str(record.value)
 
     # Check steps printout
-
     assert """\
 state = TrioStyleStateMachine()
 async def steps():
@@ -202,4 +201,58 @@ async def steps():
     await state.do_work(value=v1)
     await state.teardown()
 state.trio_run(steps)
-""" in captured.out
+""" in captured.out, captured.out
+
+
+def test_trio_style_failing_state_machine_with_multiple_result(capsys):
+
+    # Failing state machine
+
+    class TrioStyleStateMachine(TrioRuleBasedStateMachine):
+        Values = Bundle('value')
+
+        @initialize(target=Values)
+        async def initialize(self):
+            return multiple(1, 2)
+
+        @rule(value=Values)
+        async def do_work(self, value):
+            assert value == 2
+
+    # Check failure
+
+    with pytest.raises(AssertionError) as record:
+        run_state_machine_as_test(TrioStyleStateMachine)
+    captured = capsys.readouterr()
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps
+
+    with pytest.raises(AssertionError) as record:
+        state = TrioStyleStateMachine()
+
+        async def steps():
+            v1, v2 = await state.initialize()
+            await state.do_work(value=v1)
+            await state.teardown()
+
+        state.trio_run(steps)
+    assert 'assert 1 == 2' in str(record.value)
+
+    # Check steps printout
+    assert """\
+state = TrioStyleStateMachine()
+async def steps():
+    v1, v2 = await state.initialize()
+    await state.do_work(value=v1)
+    await state.teardown()
+state.trio_run(steps)
+""" in captured.out, captured.out
+
+
+def test_invalid_state_machine():
+    class NotAStateMachine:
+        pass
+
+    with pytest.raises(hypothesis.errors.InvalidArgument):
+        run_state_machine_as_test(NotAStateMachine)

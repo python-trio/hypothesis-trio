@@ -92,7 +92,7 @@ else
     mkdir empty
     cd empty
 
-    coverage run --rcfile=../.coveragerc -m pytest -W error -ra -v --pyargs hypothesis_trio --verbose
+    coverage run --rcfile=../.coveragerc -m pytest -ra -v --pyargs hypothesis_trio --verbose
 
     bash <(curl -s https://codecov.io/bash)
 fi
