@@ -4,7 +4,6 @@ from trio.abc import Instrument
 from trio.testing import MockClock
 
 import hypothesis
-from hypothesis import Verbosity
 from hypothesis_trio.stateful import TrioRuleBasedStateMachine
 from hypothesis.stateful import (
     Bundle, initialize, rule, invariant, run_state_machine_as_test, multiple
@@ -249,3 +248,11 @@ async def steps():
     await state.teardown()
 state.trio_run(steps)
 """ in captured.out, captured.out
+
+
+def test_invalid_state_machine():
+    class NotAStateMachine:
+        pass
+
+    with pytest.raises(hypothesis.errors.InvalidArgument):
+        run_state_machine_as_test(NotAStateMachine)
