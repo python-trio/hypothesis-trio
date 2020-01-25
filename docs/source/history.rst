@@ -5,6 +5,11 @@ Release history
 
 .. towncrier release notes start
 
+Hypothesis_Trio 0.5.0 (2020-01-11)
+----------------------------------
+
+Update to hypothesis version 5 (more precisely, ``hypothesis>=5.1.4``).
+
 Hypothesis_Trio 0.4.0 (2019-06-26)
 ----------------------------------
 
