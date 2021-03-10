@@ -19,7 +19,6 @@ from hypothesis.stateful import (
     Verbosity,
     Settings,
     HealthCheck,
-    _GenericStateMachine,
     given,
     st,
     current_build_context,
@@ -53,7 +52,7 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
     @given(st.data())
     def run_state_machine(factory, data):
         machine = factory()
-        if not isinstance(machine, _GenericStateMachine):
+        if not isinstance(machine, RuleBasedStateMachine):
             raise InvalidArgument(
                 "Expected RuleBasedStateMachine but state_machine_factory() "
                 "returned %r (type=%s)" % (machine, type(machine).__name__)
@@ -302,7 +301,7 @@ def monkey_patch_hypothesis():
         """Run a state machine definition as a test, either silently doing nothing
         or printing a minimal breaking program and raising an exception.
         state_machine_factory is anything which returns an instance of
-        _GenericStateMachine when called with no arguments - it can be a class or a
+        RuleBasedStateMachine when called with no arguments - it can be a class or a
         function. settings will be used to control the execution of the test.
         """
         if hasattr(state_machine_factory, "_custom_runner"):
