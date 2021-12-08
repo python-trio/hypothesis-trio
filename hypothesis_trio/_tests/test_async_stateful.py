@@ -25,6 +25,11 @@ def test_rule_based():
             await trio.sleep(0)
             self.events.append("initialize")
 
+        @invariant(check_during_init=True)
+        async def invariant_before_init(self):
+            await trio.sleep(0)
+            self.events.append("invariant_before_init")
+
         @invariant()
         async def invariant(self):
             await trio.sleep(0)
@@ -50,21 +55,31 @@ def test_rule_based():
             current_run_events = []
 
     for run_events in per_run_events:
-        expected_events = ["invariant", "initialize", "invariant"]
-        expected_events += ["rule", "invariant"] * ((len(run_events) - 3) // 2)
+        expected_events = [
+            "invariant_before_init",
+            "initialize",
+            "invariant",
+            "invariant_before_init",
+        ]
+        expected_events += ["rule", "invariant", "invariant_before_init"] * (
+            (len(run_events) - 4) // 3
+        )
         expected_events.append("teardown")
         assert run_events == expected_events
 
 
-@pytest.mark.xfail()
-def test_custom_clock_and_instruments():
-    class CustomMockClock(MockClock):
-        def __init__(self):
-            super().__init__()
-            self.in_use = False
+def test_custom_clock_and_instruments(monkeypatch):
+    # Subclassing MockClock is dissallowed since v0.15.0,
+    # but it ain't gonna stop us from checking it is correctly used !
+    custom_clock_used = False
+    vanilla_start_clock = MockClock.start_clock
 
-        def start_clock(self):
-            self.in_use = True
+    def patched_start_clock(self, *args, **kwargs):
+        nonlocal custom_clock_used
+        custom_clock_used = True
+        vanilla_start_clock(self, *args, **kwargs)
+
+    monkeypatch.setattr(MockClock, "start_clock", patched_start_clock)
 
     class CustomInstrument(Instrument):
         def __init__(self):
@@ -78,7 +93,7 @@ def test_custom_clock_and_instruments():
         def __init__(self):
             super().__init__()
 
-            self.expected_clock = CustomMockClock()
+            self.expected_clock = MockClock()
             self.set_clock(self.expected_clock)
 
             self.expected_instruments = [CustomInstrument() for _ in range(3)]
@@ -87,7 +102,7 @@ def test_custom_clock_and_instruments():
 
         @rule()
         async def rule(self):
-            assert self.expected_clock.in_use
+            assert custom_clock_used
             for instrument in self.expected_instruments:
                 assert instrument.in_use
 

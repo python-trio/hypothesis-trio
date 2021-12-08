@@ -16,7 +16,9 @@ setup(
     author_email="emmanuel.leblond@gmail.com",
     license="MPL 2.0",
     packages=find_packages(),
-    install_requires=["trio>=0.11", "hypothesis>=5.1.4,<5.5.0"],
+    # Note: There is no use setting a upper bound for hypothesis given we rely
+    # on internals that are subject to change even between minor versions !
+    install_requires=["trio>=0.11", "hypothesis>=6.7.0"],
     keywords=[
         "async",
         "hypothesis",
