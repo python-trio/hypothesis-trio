@@ -56,6 +56,7 @@ def test_rule_based():
         assert run_events == expected_events
 
 
+@pytest.mark.xfail()
 def test_custom_clock_and_instruments():
     class CustomMockClock(MockClock):
         def __init__(self):

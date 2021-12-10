@@ -14,7 +14,7 @@ setup(
     author_email="emmanuel.leblond@gmail.com",
     license="MPL 2.0",
     packages=find_packages(),
-    install_requires=["trio>=0.11", "hypothesis>=5.1.4,<6"],
+    install_requires=["trio>=0.11", "hypothesis>=5.1.4,<5.5.0"],
     keywords=[
         "async",
         "hypothesis",
