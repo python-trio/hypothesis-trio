@@ -2,8 +2,8 @@
 hypothesis-trio
 ===============
 
-.. image:: https://travis-ci.org/python-trio/hypothesis-trio.svg?branch=master
-    :target: https://travis-ci.org/python-trio/hypothesis-trio
+.. image:: https://github.com/python-trio/hypothesis-trio/actions/workflows/ci.yml/badge.svg?branch=master
+    :target: https://github.com/python-trio/hypothesis-trio/actions/workflows/ci.yml
 
 .. image:: https://codecov.io/gh/python-trio/hypothesis-trio/branch/master/graph/badge.svg
   :target: https://codecov.io/gh/python-trio/hypothesis-trio
