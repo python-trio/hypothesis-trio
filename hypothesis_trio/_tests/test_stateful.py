@@ -1,4 +1,4 @@
-from hypothesis_trio.stateful import *  # Import to trigger monkeypatch
+from hypothesis_trio.stateful import *  # noqa: F401,F403 (Import to trigger monkeypatch)
 from hypothesis.stateful import (
     RuleBasedStateMachine,
     run_state_machine_as_test,
@@ -22,7 +22,7 @@ def test_vanilla_stateful_with_monkeypatch():
 
         @rule(arg=just(42))
         def step(self, arg):
-            assert arg is 42
+            assert arg == 42
             self.events.append("execute_step")
 
         @invariant()
