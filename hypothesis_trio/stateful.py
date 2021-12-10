@@ -10,25 +10,20 @@ try:
 except ImportError:
     trio_asyncio = None
 
-import hypothesis
-
+from hypothesis.internal.healthcheck import fail_health_check
 from hypothesis.stateful import (
-    # Needed for run_state_machine_as_test copy-paste
     check_type,
     current_verbosity,
     Verbosity,
     Settings,
     HealthCheck,
-    _GenericStateMachine,
     given,
     st,
     current_build_context,
     function_digest,
-    InvalidArgument,
     multiple,
     STATE_MACHINE_RUN_LABEL,
     SHOULD_CONTINUE_LABEL,
-    # Needed for TrioRuleBasedStateMachine
     RuleBasedStateMachine,
     VarReference,
     MultipleResults,
@@ -37,10 +32,11 @@ from hypothesis.stateful import (
 
 # This is an ugly copy-paste since it's currently no possible to plug a special
 # runner into run_state_machine_as_test
-# https://github.com/HypothesisWorks/hypothesis/blob/47f82a1cc02aec5ee4d95a21df5a6eecc4aa1047/hypothesis-python/src/hypothesis/stateful.py#L80-L162
 
 
-def run_custom_state_machine_as_test(state_machine_factory, settings=None):
+def run_custom_state_machine_as_test(state_machine_factory, *, settings=None):
+    # https://github.com/HypothesisWorks/hypothesis/blob/6173b2a8783fac5bab3fa478d3a5b0719f93b942/hypothesis-python/src/hypothesis/stateful.py#L103-L121
+    # <-------------------> snip !
     if settings is None:
         try:
             settings = state_machine_factory.TestCase.settings
@@ -52,20 +48,20 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
     @settings
     @given(st.data())
     def run_state_machine(factory, data):
+        cd = data.conjecture_data
         machine = factory()
-        if not isinstance(machine, _GenericStateMachine):
-            raise InvalidArgument(
-                "Expected RuleBasedStateMachine but state_machine_factory() "
-                "returned %r (type=%s)" % (machine, type(machine).__name__)
-            )
-        data.conjecture_data.hypothesis_runner = machine
+        check_type(RuleBasedStateMachine, machine, "state_machine_factory()")
+        cd.hypothesis_runner = machine
 
         print_steps = (
             current_build_context().is_final or current_verbosity() >= Verbosity.debug
         )
+        # <-------------------> snip !
 
-        return machine._custom_runner(data, print_steps, settings)
+        return machine._custom_runner(cd, print_steps, settings)
 
+    # https://github.com/HypothesisWorks/hypothesis/blob/6173b2a8783fac5bab3fa478d3a5b0719f93b942/hypothesis-python/src/hypothesis/stateful.py#L214-L227
+    # <-------------------> snip !
     # Use a machine digest to identify stateful tests in the example database
     run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = (
         function_digest(state_machine_factory)
@@ -80,6 +76,7 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
     run_state_machine._hypothesis_internal_print_given_args = False
 
     run_state_machine(state_machine_factory)
+    # <-------------------> snip !
 
 
 class TrioRuleBasedStateMachine(RuleBasedStateMachine):
@@ -120,20 +117,18 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
 
     # Runner logic
 
-    def _custom_runner(self, data, print_steps, settings):
-
-        # Second part of the ugly copy-paste - no way around it for the moment
-        # https://github.com/HypothesisWorks/hypothesis/blob/master/hypothesis-python/src/hypothesis/stateful.py#L94-L147
-
+    def _custom_runner(self, cd, print_steps, settings):
         async def runner(machine):
+            # Second part of the ugly copy-paste - no way around it for the moment
+            # https://github.com/HypothesisWorks/hypothesis/blob/6173b2a8783fac5bab3fa478d3a5b0719f93b942/hypothesis-python/src/hypothesis/stateful.py#L122-L212
+            # <-------------------> snip !
             try:
                 if print_steps:
-                    machine.print_start()
-                await machine.check_invariants()
+                    report(f"state = {machine.__class__.__name__}()")
+                    report("async def steps():")  # <--- New line !
+                await machine.check_invariants(settings)  # <--- Await added !
                 max_steps = settings.stateful_step_count
                 steps_run = 0
-
-                cd = data.conjecture_data
 
                 while True:
                     # We basically always want to run the maximum number of steps,
@@ -163,23 +158,70 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
                                 break
                     steps_run += 1
 
-                    value = data.conjecture_data.draw(machine.steps())
-                    # Assign 'result' here in case 'execute_step' fails below
+                    # Choose a rule to run, preferring an initialize rule if there are
+                    # any which have not been run yet.
+                    if machine._initialize_rules_to_run:
+                        init_rules = [
+                            st.tuples(
+                                st.just(rule), st.fixed_dictionaries(rule.arguments)
+                            )
+                            for rule in machine._initialize_rules_to_run
+                        ]
+                        rule, data = cd.draw(st.one_of(init_rules))
+                        machine._initialize_rules_to_run.remove(rule)
+                    else:
+                        rule, data = cd.draw(machine._rules_strategy)
+
+                    # Pretty-print the values this rule was called with *before* calling
+                    # _add_result_to_targets, to avoid printing arguments which are also
+                    # a return value using the variable name they are assigned to.
+                    # See https://github.com/HypothesisWorks/hypothesis/issues/2341
+                    if print_steps:
+                        data_to_print = {
+                            k: machine._pretty_print(v) for k, v in data.items()
+                        }
+
+                    # Assign 'result' here in case executing the rule fails below
                     result = multiple()
                     try:
-                        result = await machine.execute_step(value)
+                        data = dict(data)
+                        for k, v in list(data.items()):
+                            if isinstance(v, VarReference):
+                                data[k] = machine.names_to_values[v.name]
+                        result = await rule.function(
+                            machine, **data
+                        )  # <--- Await added !
+                        if rule.targets:
+                            if isinstance(result, MultipleResults):
+                                for single_result in result.values:
+                                    machine._add_result_to_targets(
+                                        rule.targets, single_result
+                                    )
+                            else:
+                                machine._add_result_to_targets(rule.targets, result)
+                        elif result is not None:
+                            fail_health_check(
+                                settings,
+                                "Rules should return None if they have no target bundle, "
+                                f"but {rule.function.__qualname__} returned {result!r}",
+                                HealthCheck.return_value,
+                            )
                     finally:
                         if print_steps:
                             # 'result' is only used if the step has target bundles.
                             # If it does, and the result is a 'MultipleResult',
                             # then 'print_step' prints a multi-variable assignment.
-                            machine.print_step(value, result)
-                    await machine.check_invariants()
-                    data.conjecture_data.stop_example()
+                            machine._print_step(rule, data_to_print, result)
+                    await machine.check_invariants(settings)  # <--- Await added !
+                    cd.stop_example()
             finally:
                 if print_steps:
-                    machine.print_end()
-                await machine.teardown()
+                    report(
+                        "    await state.teardown()"
+                    )  # <--- Indentation + await added !
+                    report("state.trio_run(steps)")  # <--- New line !
+                await machine.teardown()  # <--- Await added !
+            # <-------------------> snip !
 
         self.trio_run(runner, self)
 
@@ -211,47 +253,38 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
         """
         pass
 
-    async def execute_step(self, step):
-        rule, data = step
-        data = dict(data)
-        for k, v in list(data.items()):
-            if isinstance(v, VarReference):
-                data[k] = self.names_to_values[v.name]
-        result = await rule.function(self, **data)
-        if rule.targets:
-            if isinstance(result, MultipleResults):
-                for single_result in result.values:
-                    self._add_result_to_targets(rule.targets, single_result)
-            else:
-                self._add_result_to_targets(rule.targets, result)
-        if self._initialize_rules_to_run:
-            self._initialize_rules_to_run.remove(rule)
-        return result
-
-    async def check_invariants(self):
+    # Copy-paste - no way around it for the moment
+    # https://github.com/HypothesisWorks/hypothesis/blob/6173b2a8783fac5bab3fa478d3a5b0719f93b942/hypothesis-python/src/hypothesis/stateful.py#L368-L387
+    # <-------------------> snip !
+    async def check_invariants(self, settings):  # <-- Async added !
         for invar in self.invariants():
-            if invar.precondition and not invar.precondition(self):
+            if self._initialize_rules_to_run and not invar.check_during_init:
                 continue
-            await invar.function(self)
+            if not all(precond(self) for precond in invar.preconditions):
+                continue
+            if (
+                current_build_context().is_final
+                or settings.verbosity >= Verbosity.debug
+            ):
+                report(f"state.{invar.function.__name__}()")
+            result = await invar.function(self)  # <-- Await added !
+            if result is not None:
+                fail_health_check(
+                    settings,
+                    "The return value of an @invariant is always ignored, but "
+                    f"{invar.function.__qualname__} returned {result!r} "
+                    "instead of None",
+                    HealthCheck.return_value,
+                )
+
+    # <-------------------> snip !
 
     # Reporting
 
-    def print_start(self):
-        report("state = %s()" % (self.__class__.__name__,))
-        report("async def steps():")
-
-    def print_end(self):
-        report("    await state.teardown()")
-        report("state.trio_run(steps)")
-
-    def print_step(self, step, result):
-        # Copy-pasted from RuleBasedStateMachine.print_step in order to add
-        # the await statement.
-        # https://github.com/HypothesisWorks/hypothesis/blob/47f82a1cc02aec5ee4d95a21df5a6eecc4aa1047/hypothesis-python/src/hypothesis/stateful.py#L806-L830
-        rule, data = step
-        data_repr = {}
-        for k, v in data.items():
-            data_repr[k] = self._RuleBasedStateMachine__pretty(v)
+    # Last part of the ugly copy-paste - no way around it for the moment
+    # https://github.com/HypothesisWorks/hypothesis/blob/6173b2a8783fac5bab3fa478d3a5b0719f93b942/hypothesis-python/src/hypothesis/stateful.py#L339-L357
+    # <-------------------> snip !
+    def _print_step(self, rule, data, result):
         self.step_count = getattr(self, "step_count", 0) + 1
         # If the step has target bundles, and the result is a MultipleResults
         # then we want to assign to multiple variables.
@@ -259,19 +292,19 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             n_output_vars = len(result.values)
         else:
             n_output_vars = 1
-        output_assignment = (
-            "%s = " % (", ".join(self.last_names(n_output_vars)),)
-            if rule.targets and n_output_vars >= 1
-            else ""
-        )
+        if rule.targets and n_output_vars >= 1:
+            output_assignment = ", ".join(self._last_names(n_output_vars)) + " = "
+        else:
+            output_assignment = ""
         report(
-            "    %sawait state.%s(%s)"
-            % (
+            "    {}await state.{}({})".format(  # <--- Identation+await added !
                 output_assignment,
                 rule.function.__name__,
-                ", ".join("%s=%s" % kv for kv in data_repr.items()),
+                ", ".join("%s=%s" % kv for kv in data.items()),
             )
         )
+
+    # <-------------------> snip !
 
 
 if trio_asyncio:
@@ -294,15 +327,18 @@ if trio_asyncio:
 
 
 def monkey_patch_hypothesis():
+    import hypothesis.stateful
+
     if hasattr(hypothesis.stateful, "original_run_state_machine_as_test"):
         return
     original = hypothesis.stateful.run_state_machine_as_test
 
-    def run_state_machine_as_test(state_machine_factory, settings=None):
+    def run_state_machine_as_test(state_machine_factory, *, settings=None):
         """Run a state machine definition as a test, either silently doing nothing
         or printing a minimal breaking program and raising an exception.
+
         state_machine_factory is anything which returns an instance of
-        _GenericStateMachine when called with no arguments - it can be a class or a
+        RuleBasedStateMachine when called with no arguments - it can be a class or a
         function. settings will be used to control the execution of the test.
         """
         if hasattr(state_machine_factory, "_custom_runner"):
