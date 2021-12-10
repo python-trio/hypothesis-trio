@@ -21,7 +21,7 @@ setup(
         'testing',
         'trio',
     ],
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     classifiers=[
         "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
         "Operating System :: POSIX :: Linux",
