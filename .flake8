@@ -1,9 +1,3 @@
-[tool:pytest]
-filterwarnings =
-     error
-     # Ignore trio deprecation warnings in trio_asyncio
-     ignore:trio|Trio:trio.TrioDeprecationWarning:trio_asyncio\.(.*)
-
 [flake8]
 # Ignore style errors (this is black's job)
 # see. https://black.readthedocs.io/en/stable/guides/using_black_with_other_tools.html#flake8

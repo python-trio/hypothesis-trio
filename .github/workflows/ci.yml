@@ -35,4 +35,7 @@ jobs:
       run: |
         mkdir empty
         cd empty
-        pytest -ra -v --pyargs hypothesis_trio --verbose
+        coverage run --rcfile=../.coveragerc -m pytest --pyargs hypothesis_trio -ra --verbose
+    - name: Upload coverage
+      run: |
+        bash <(curl -s https://codecov.io/bash)
