@@ -1,6 +1,22 @@
+[build-system]
+requires = [
+    "setuptools>=49.2.0",
+    "wheel>=0.34.2",
+]
+build-backend = "setuptools.build_meta"
+
 [tool.towncrier]
 package = "hypothesis_trio"
 filename = "docs/source/history.rst"
 directory = "newsfragments"
 underlines = ["-", "~", "^"]
 issue_format = "`#{issue} <https://github.com/python-trio/hypothesis-trio/issues/{issue}>`__"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+filterwarnings = [
+    "error",
+    # Ignore trio deprecation warnings in trio_asyncio
+    "ignore:trio|Trio:trio.TrioDeprecationWarning:trio_asyncio\\.(.*)"
+]
+testpaths = ["hypothesis_trio/_tests"]
