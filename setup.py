@@ -16,10 +16,10 @@ setup(
     packages=find_packages(),
     install_requires=["trio>=0.11", "hypothesis>=5.1.4,<6"],
     keywords=[
-        'async',
-        'hypothesis',
-        'testing',
-        'trio',
+        "async",
+        "hypothesis",
+        "testing",
+        "trio",
     ],
     python_requires=">=3.6",
     classifiers=[

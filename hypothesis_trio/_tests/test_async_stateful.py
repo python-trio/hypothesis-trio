@@ -6,7 +6,12 @@ from trio.testing import MockClock
 import hypothesis
 from hypothesis_trio.stateful import TrioRuleBasedStateMachine
 from hypothesis.stateful import (
-    Bundle, initialize, rule, invariant, run_state_machine_as_test, multiple
+    Bundle,
+    initialize,
+    rule,
+    invariant,
+    run_state_machine_as_test,
+    multiple,
 )
 from hypothesis.strategies import integers, lists, tuples
 
@@ -18,21 +23,21 @@ def test_rule_based():
         @initialize()
         async def initialize(self):
             await trio.sleep(0)
-            self.events.append('initialize')
+            self.events.append("initialize")
 
         @invariant()
         async def invariant(self):
             await trio.sleep(0)
-            self.events.append('invariant')
+            self.events.append("invariant")
 
         @rule()
         async def rule(self):
             await trio.sleep(0)
-            self.events.append('rule')
+            self.events.append("rule")
 
         async def teardown(self):
             await trio.sleep(0)
-            self.events.append('teardown')
+            self.events.append("teardown")
 
     run_state_machine_as_test(LogEventsRuleBasedStateMachine)
 
@@ -40,14 +45,14 @@ def test_rule_based():
     current_run_events = []
     for event in LogEventsRuleBasedStateMachine.events:
         current_run_events.append(event)
-        if event == 'teardown':
+        if event == "teardown":
             per_run_events.append(current_run_events)
             current_run_events = []
 
     for run_events in per_run_events:
-        expected_events = ['invariant', 'initialize', 'invariant']
-        expected_events += ['rule', 'invariant'] * ((len(run_events) - 3) // 2)
-        expected_events.append('teardown')
+        expected_events = ["invariant", "initialize", "invariant"]
+        expected_events += ["rule", "invariant"] * ((len(run_events) - 3) // 2)
+        expected_events.append("teardown")
         assert run_events == expected_events
 
 
@@ -123,7 +128,7 @@ def test_trio_style():
             async for x, y in receive_job:
                 await trio.sleep(0)
                 result = x + y
-                await send_result.send('%s + %s = %s' % (x, y, result))
+                await send_result.send("%s + %s = %s" % (x, y, result))
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
         @initialize()
@@ -131,8 +136,9 @@ def test_trio_style():
             self.send_job, receive_job = trio.open_memory_channel(100)
             send_result, self.receive_result = trio.open_memory_channel(100)
             self.consumer_args = consumer, receive_job, send_result
-            self.consumer_cancel_scope = await self.get_root_nursery(
-            ).start(*self.consumer_args)
+            self.consumer_cancel_scope = await self.get_root_nursery().start(
+                *self.consumer_args
+            )
 
         @rule(work=lists(tuples(integers(), integers())))
         async def generate_work(self, work):
@@ -143,8 +149,9 @@ def test_trio_style():
         @rule()
         async def restart_consumer(self):
             self.consumer_cancel_scope.cancel()
-            self.consumer_cancel_scope = await self.get_root_nursery(
-            ).start(*self.consumer_args)
+            self.consumer_cancel_scope = await self.get_root_nursery().start(
+                *self.consumer_args
+            )
 
         @invariant()
         async def check_results(self):
@@ -163,7 +170,7 @@ def test_trio_style_failing_state_machine_with_single_result(capsys):
     # Failing state machine
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
-        Values = Bundle('value')
+        Values = Bundle("value")
 
         @initialize(target=Values)
         async def initialize(self):
@@ -178,7 +185,7 @@ def test_trio_style_failing_state_machine_with_single_result(capsys):
     with pytest.raises(AssertionError) as record:
         run_state_machine_as_test(TrioStyleStateMachine)
     captured = capsys.readouterr()
-    assert 'assert 1 == 2' in str(record.value)
+    assert "assert 1 == 2" in str(record.value)
 
     # Check steps
 
@@ -191,17 +198,20 @@ def test_trio_style_failing_state_machine_with_single_result(capsys):
             await state.teardown()
 
         state.trio_run(steps)
-    assert 'assert 1 == 2' in str(record.value)
+    assert "assert 1 == 2" in str(record.value)
 
     # Check steps printout
-    assert """\
+    assert (
+        """\
 state = TrioStyleStateMachine()
 async def steps():
     v1 = await state.initialize()
     await state.do_work(value=v1)
     await state.teardown()
 state.trio_run(steps)
-""" in captured.out, captured.out
+"""
+        in captured.out
+    ), captured.out
 
 
 def test_trio_style_failing_state_machine_with_multiple_result(capsys):
@@ -209,7 +219,7 @@ def test_trio_style_failing_state_machine_with_multiple_result(capsys):
     # Failing state machine
 
     class TrioStyleStateMachine(TrioRuleBasedStateMachine):
-        Values = Bundle('value')
+        Values = Bundle("value")
 
         @initialize(target=Values)
         async def initialize(self):
@@ -224,7 +234,7 @@ def test_trio_style_failing_state_machine_with_multiple_result(capsys):
     with pytest.raises(AssertionError) as record:
         run_state_machine_as_test(TrioStyleStateMachine)
     captured = capsys.readouterr()
-    assert 'assert 1 == 2' in str(record.value)
+    assert "assert 1 == 2" in str(record.value)
 
     # Check steps
 
@@ -237,17 +247,20 @@ def test_trio_style_failing_state_machine_with_multiple_result(capsys):
             await state.teardown()
 
         state.trio_run(steps)
-    assert 'assert 1 == 2' in str(record.value)
+    assert "assert 1 == 2" in str(record.value)
 
     # Check steps printout
-    assert """\
+    assert (
+        """\
 state = TrioStyleStateMachine()
 async def steps():
     v1, v2 = await state.initialize()
     await state.do_work(value=v1)
     await state.teardown()
 state.trio_run(steps)
-""" in captured.out, captured.out
+"""
+        in captured.out
+    ), captured.out
 
 
 def test_invalid_state_machine():
