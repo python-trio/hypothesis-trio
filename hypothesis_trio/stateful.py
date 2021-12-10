@@ -4,6 +4,7 @@
 
 import trio
 from trio.testing import trio_test
+
 try:
     import trio_asyncio
 except ImportError:
@@ -43,13 +44,9 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
     if settings is None:
         try:
             settings = state_machine_factory.TestCase.settings
-            check_type(
-                Settings, settings, "state_machine_factory.TestCase.settings"
-            )
+            check_type(Settings, settings, "state_machine_factory.TestCase.settings")
         except AttributeError:
-            settings = Settings(
-                deadline=None, suppress_health_check=HealthCheck.all()
-            )
+            settings = Settings(deadline=None, suppress_health_check=HealthCheck.all())
     check_type(Settings, settings, "settings")
 
     @settings
@@ -64,23 +61,21 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
         data.conjecture_data.hypothesis_runner = machine
 
         print_steps = (
-            current_build_context().is_final
-            or current_verbosity() >= Verbosity.debug
+            current_build_context().is_final or current_verbosity() >= Verbosity.debug
         )
 
         return machine._custom_runner(data, print_steps, settings)
 
     # Use a machine digest to identify stateful tests in the example database
-    run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = function_digest(
-        state_machine_factory
+    run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = (
+        function_digest(state_machine_factory)
     )
     # Copy some attributes so @seed and @reproduce_failure "just work"
     run_state_machine._hypothesis_internal_use_seed = getattr(
         state_machine_factory, "_hypothesis_internal_use_seed", None
     )
     run_state_machine._hypothesis_internal_use_reproduce_failure = getattr(
-        state_machine_factory, "_hypothesis_internal_use_reproduce_failure",
-        None
+        state_machine_factory, "_hypothesis_internal_use_reproduce_failure", None
     )
     run_state_machine._hypothesis_internal_print_given_args = False
 
@@ -88,8 +83,7 @@ def run_custom_state_machine_as_test(state_machine_factory, settings=None):
 
 
 class TrioRuleBasedStateMachine(RuleBasedStateMachine):
-    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`.
-    """
+    """Trio compatible version of `hypothesis.stateful.RuleBasedStateMachine`."""
 
     def __init__(self):
         super().__init__()
@@ -98,7 +92,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
         self.__instruments = []
 
     def get_root_nursery(self):
-        return getattr(self, '_nursery', None)
+        return getattr(self, "_nursery", None)
 
     def set_clock(self, clock):
         """Define the clock to use in the trio loop.
@@ -108,9 +102,9 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             before the trio loop has been started)
         """
         if self.__started:
-            raise RuntimeError('Can only set clock during `__init__`')
+            raise RuntimeError("Can only set clock during `__init__`")
         if self.__clock:
-            raise RuntimeError('clock already provided')
+            raise RuntimeError("clock already provided")
         self.__clock = clock
 
     def push_instrument(self, instrument):
@@ -121,7 +115,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             before the trio loop has been started)
         """
         if self.__started:
-            raise RuntimeError('Can only add instrument during `__init__`')
+            raise RuntimeError("Can only add instrument during `__init__`")
         self.__instruments.append(instrument)
 
     # Runner logic
@@ -162,9 +156,7 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
                         should_continue_value = cd.draw_bits(16)
                         if should_continue_value > 1:
                             cd.stop_example(discard=True)
-                            cd.draw_bits(
-                                16, forced=int(bool(should_continue_value))
-                            )
+                            cd.draw_bits(16, forced=int(bool(should_continue_value)))
                         else:
                             cd.stop_example()
                             if should_continue_value == 0:
@@ -202,11 +194,11 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
     def trio_run(self, corofn, *args):
         self.__started = True
         kwargs = {
-            'instrument_%s' % i: instrument
+            "instrument_%s" % i: instrument
             for i, instrument in enumerate(self.__instruments)
         }
         if self.__clock:
-            kwargs['clock'] = self.__clock
+            kwargs["clock"] = self.__clock
         trio_test(self._trio_main_afn_factory(corofn, *args))(**kwargs)
 
     # Async methods
@@ -269,10 +261,12 @@ class TrioRuleBasedStateMachine(RuleBasedStateMachine):
             n_output_vars = 1
         output_assignment = (
             "%s = " % (", ".join(self.last_names(n_output_vars)),)
-            if rule.targets and n_output_vars >= 1 else ""
+            if rule.targets and n_output_vars >= 1
+            else ""
         )
         report(
-            "    %sawait state.%s(%s)" % (
+            "    %sawait state.%s(%s)"
+            % (
                 output_assignment,
                 rule.function.__name__,
                 ", ".join("%s=%s" % kv for kv in data_repr.items()),
@@ -284,7 +278,7 @@ if trio_asyncio:
 
     class TrioAsyncioRuleBasedStateMachine(TrioRuleBasedStateMachine):
         def get_asyncio_loop(self):
-            return getattr(self, '_loop', None)
+            return getattr(self, "_loop", None)
 
         def _trio_main_afn_factory(self, corofn, *args):
             async def _trio_main_afn(**kwargs):
@@ -311,7 +305,7 @@ def monkey_patch_hypothesis():
         _GenericStateMachine when called with no arguments - it can be a class or a
         function. settings will be used to control the execution of the test.
         """
-        if hasattr(state_machine_factory, '_custom_runner'):
+        if hasattr(state_machine_factory, "_custom_runner"):
             return run_custom_state_machine_as_test(
                 state_machine_factory, settings=settings
             )

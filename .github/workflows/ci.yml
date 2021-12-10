@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - "dependabot/**"
+  pull_request:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.6', '3.7', '3.8', '3.9', '3.10']
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: "${{ matrix.python }}"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r test-requirements.txt
+        pip install .
+    - name: Q&A
+      run: |
+        black --check hypothesis_trio setup.py
+        flake8 hypothesis_trio
+    - name: Tests
+      run: |
+        mkdir empty
+        cd empty
+        pytest -ra -v --pyargs hypothesis_trio --verbose
