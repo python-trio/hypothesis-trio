@@ -5,6 +5,15 @@ Release history
 
 .. towncrier release notes start
 
+Hypothesis_Trio 0.6.0 (2021-12-10)
+----------------------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed support for Hypothesis 6.7 and later. (`#7 <https://github.com/python-trio/hypothesis-trio/issues/7>`__)
+
+
 Hypothesis_Trio 0.5.0 (2020-01-11)
 ----------------------------------
 
