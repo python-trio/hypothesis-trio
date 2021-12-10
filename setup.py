@@ -1,5 +1,7 @@
 from setuptools import setup, find_packages
 
+# Awesome hack to load `__version__`
+__version__ = None
 exec(open("hypothesis_trio/_version.py", encoding="utf-8").read())
 
 LONG_DESC = open("README.rst", encoding="utf-8").read()
