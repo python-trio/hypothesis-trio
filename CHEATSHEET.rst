@@ -10,14 +10,11 @@ To run tests
 * Actually run the tests: ``pytest hypothesis_trio``
 
 
-To run yapf
------------
+To run Q&A
+----------
 
-* Show what changes yapf wants to make: ``yapf -rpd setup.py
-  hypothesis_trio``
-
-* Apply all changes directly to the source tree: ``yapf -rpi setup.py
-  hypothesis_trio``
+* To check&correct coding style: ``black hypothesis_trio setup.py``
+* To lint code: ``flake8 hypothesis_trio setup.py``
 
 
 To make a release
@@ -33,7 +30,11 @@ To make a release
 
 * Double-check it all works, docs build, etc.
 
-* Build your sdist and wheel: ``python setup.py sdist bdist_wheel``
+* Install build (wheel builder) and twine (wheel uploader): ``pip install build twine``
+
+* Make sure you dist folder is clean: ``rm -rf ./dist``
+
+* Build your sdist and wheel: ``python -m build``
 
 * Upload to PyPI: ``twine upload dist/*``
 
