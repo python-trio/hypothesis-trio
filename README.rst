@@ -23,7 +23,7 @@ Replace ``hypothesis.stateful.RuleBasedStateMachine`` by ``hypothesis_trio.state
 
 .. code-block:: python
 
-    from hypothesis_trio.stateful import TrioRuleBasedStateMachine, run_state_machine_as_test
+    from hypothesis_trio.stateful import Bundle, TrioRuleBasedStateMachine, run_state_machine_as_test
 
 
     def test_trio_number_modifier(hypothesis_settings):
